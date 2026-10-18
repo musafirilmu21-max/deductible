@@ -72,25 +72,28 @@ GitHub: https://github.com/musafirilmu21-max/deductible
 
 The interesting part is what the benchmark forced me to change.
 
-I started with the obvious design: the model classifies each transaction. To make a tiny model reliable I constrained its output to a single number 1–10 and gave it one few-shot example per category. Then I measured. I labelled two small datasets — **clean** merchant names, and **messy** real bank strings like `SQ *BLUE BOTTLE COFFEE 4471 SF` — and ran three open models, a keyword baseline, and the hybrid:
+I started with the obvious design: the model classifies each transaction. To make a tiny model reliable I constrained its output to a single number 1–10 and gave it one few-shot example per category. Then I measured — honestly, including the sets where my own design lost.
 
-| dataset | keyword rules | Qwen2.5-0.5B | Qwen2.5-1.5B | Qwen2.5-3B | **hybrid** |
-|---|---|---|---|---|---|
-| Clean merchant names | 15/15 | 5/15 | 11/15 | 10/15 | **15/15** |
-| Messy bank strings | 13/14 | 6/14 | 7/14 | 7/14 | **13/14** |
-
-Two uncomfortable truths fell out:
+Two uncomfortable truths fell out first:
 
 1. **A hand-tuned keyword table beats the models on clean names.** Of course it does — I wrote the keywords against those exact names.
 2. **Bigger was not automatically better** — 3B did not beat 1.5B at this task.
 
-And then the one I did not expect: **the hybrid tied the keyword baseline exactly — 15/15 clean, 13/14 messy.** Read the table: hybrid and keyword are identical. On the messy set the model fixed one unknown merchant (FACEBK → Marketing) and broke another (INSTACART → Software), net zero. At 29 labelled rows the model's contribution to classification accuracy is simply undetectable.
+And on those 29 rows the hybrid tied the keyword baseline exactly (15/15 clean, 13/14 messy). On a set I had tuned against, that is the honest result: no detectable model contribution. So I built a **held-out set of 150 merchants I deliberately did *not* add to the keyword table** — the fair test of generalization:
 
-That is the honest result, and it changed what I sell. I stopped claiming the model classifies better — it does not, at this scale — and pointed it at the one thing a rule table cannot do: talking to a human about their money. The ask layer is where the LLM earns its place; classification stays a deterministic spine.
+| set | keyword rules | Qwen2.5-1.5B | hybrid |
+|---|---|---|---|
+| clean names (keywords tuned here) | 15/15 | 11/15 | 15/15 |
+| messy strings (n=14) | 13/14 | 7/14 | 13/14 |
+| **held-out, 150 unseen merchants** | **34/150 (23%)** | **69/150 (46%)** | **74/150 (49%)** |
 
-Then I asked the better question: *what is a language model actually good at here?* Not memorizing that "Starbucks = meals" — a rule does that for free. It is good at **talking to a human about their money.** So the model's headline job became `ask.py`: turning a spreadsheet into a bookkeeper you can ask *"what should I double-check before filing?"* — grounded in numbers Python computed — the model is steered toward the snapshot, not left to do math (a small model can still slip; there is no output validator yet).
+There the picture changes completely. Unseen merchants fall straight through a keyword table to "Other/Personal", so rules get 23%. The model alone gets 46% by generalizing from the merchant string. The hybrid gets **49% — 2.2× the rules** — because it keeps rules for the merchants they know and hands only the unknowns to the model.
 
-The architecture, in one line: **rules classify, Python calculates, the LLM explains.**
+And 49% is still only half right. That is exactly why every model-classified row lands in the "Review these" box: the model is a generalizing first pass, not an oracle. The product is "sort the easy ones and flag the rest for you", not "file your taxes".
+
+Then I asked the better question: *what is a language model actually good at here?* Not memorizing that "Starbucks = meals" — a rule does that for free. It is good at **talking to a human about their money.** So the model's headline job became `ask.py`: turning a spreadsheet into a bookkeeper you can ask *"what should I double-check before filing?"* — grounded in numbers Python computed, with the model steered toward the snapshot rather than left to do math (a small model can still slip; there is no output validator yet).
+
+The architecture, in one line: **rules classify the known, the model guesses the unknown, Python does the math, and a human checks the flags.**
 
 Honest scope: this is a categorisation aid, not a tax filing. It is the input layer to a real Schedule C — it does not do home-office Form 8829, a vehicle log, or depreciation. Those stay with your accountant. What it saves you is the hour a month spent eyeballing a year of statements into the right buckets.
 

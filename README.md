@@ -103,26 +103,30 @@ earns its place.
 
 ## Accuracy (honest numbers)
 
-Run `python benchmark.py` yourself. Results on a commodity laptop, CPU-only:
+Run `python benchmark.py` (and `python benchmark_heldout.py`) yourself. CPU-only:
 
-| dataset | keyword | 0.5B | 1.5B | 3B | **hybrid** |
+| set | keyword | 0.5B | 1.5B | 3B | **hybrid** |
 |---|---|---|---|---|---|
-| Clean merchant names | 15/15 | 5/15 | 11/15 | 10/15 | **15/15** |
-| Messy bank strings | 13/14 | 6/14 | 7/14 | 7/14 | **13/14** |
+| Clean names (keywords tuned here) | 15/15 | 5/15 | 11/15 | 10/15 | **15/15** |
+| Messy strings (n=14) | 13/14 | 6/14 | 7/14 | 7/14 | **13/14** |
+| **Held-out, 150 unseen merchants** | **23%** | - | **46%** | - | **49%** |
 
-Read that honestly — it is the whole story:
+Read that honestly - it is the whole story:
 
-- On **clean, well-known merchant names**, a hand-tuned keyword table is hard to
-  beat (it was written against those exact names). On **messy real-world strings**
-  ("SQ *BLUE BOTTLE 4471"), rules rot (13/14) and the model alone is worse (7/14).
-- **Neither is good enough on its own.** The hybrid — rules for known merchants,
-  LLM for the unknown tail — hits **13/14 on the messy set**, better than either alone.
+- On the 29 rows the keywords were written against, the hybrid **ties** the rules
+  (15/15, 13/14). No detectable model contribution, as expected on a tuned set.
+- On **150 held-out merchants the keywords were never tuned on**, rules collapse to
+  **23%** (unseen names fall through to Other/Personal), the model alone reaches
+  **46%**, and the hybrid reaches **49% - 2.2x the rules.** That is the real case
+  for the model: it generalizes to merchants you have not seen.
+- 49% is still only half right, which is why every model-classified row is flagged
+  for human review. The tool sorts the easy ones and flags the rest; it does not file.
 - And the model's real payoff is `ask.py`: turning a spreadsheet into a bookkeeper
-  you can *talk to*, grounded in numbers Python computed. No keyword table can do that.
+  you can *talk to*, grounded in numbers Python computed.
 
-The architecture, in one line: **rules classify, Python calculates, the LLM explains.**
-A bigger model or a fine-tune on your own ledger is one download away — the entire
-point of open weights.
+The architecture, in one line: **rules classify the known, the model guesses the
+unknown, Python does the math, and a human checks the flags.** A bigger model or a
+fine-tune on your own ledger is one download away - the entire point of open weights.
 
 ## License
 
