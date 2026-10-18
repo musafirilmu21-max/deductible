@@ -57,7 +57,7 @@ def snapshot(rows):
 
 def ask(rows, question, model_path):
     snap = snapshot(rows)
-    llm = LLM(model_path)
+    llm = LLM(model_path, n_ctx=2048)  # the snapshot prompt alone is ~450 tokens
     system = (
         "You are an accurate, practical bookkeeper for a self-employed freelancer. "
         "Answer ONLY from the financial snapshot provided. Use concrete dollar figures "
@@ -68,10 +68,14 @@ def ask(rows, question, model_path):
     resp = llm.llm.create_chat_completion(
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": user}],
-        max_tokens=320,
+        max_tokens=512,
         temperature=0.2,
     )
-    return resp["choices"][0]["message"]["content"].strip()
+    choice = resp["choices"][0]
+    text = choice["message"]["content"].strip()
+    if choice.get("finish_reason") == "length":
+        text += "\n\n[answer truncated at the token limit]"
+    return text
 
 
 def main(argv=None):
