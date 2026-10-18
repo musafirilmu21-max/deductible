@@ -45,6 +45,13 @@ equipment and personal expenses, respectively.
 
 Note the design choice: **the model never does the math.** The snapshot is precomputed by auditable Python; the model only explains and advises. That is the difference between a toy and a tool your accountant does not have to re-check from scratch.
 
+### See it running
+
+![Deductible ledger UI: a messy bank statement, an offline answer, and a categorized ledger](https://raw.githubusercontent.com/musafirilmu21-max/deductible/main/demo_screenshot.png)
+
+That is a real run of the browser UI (`web.py`), captured by an automated Playwright test (`e2e_web_test.py`) that loads the page, asks a question, and asserts the grounded answer came back — so the screenshot is reproducible, not hand-typed.
+
+
 ## Code
 
 GitHub: https://github.com/musafirilmu21-max/deductible
@@ -52,6 +59,8 @@ GitHub: https://github.com/musafirilmu21-max/deductible
 - `deductible.py` — categorizer (`--mode hybrid|model|dry`) + CSV export
 - `ask.py` — the "talk to your books" layer
 - `benchmark.py` — the accuracy table below
+- `web.py` — a local browser UI (the screenshot above)
+- `e2e_web_test.py` — Playwright test that drives the UI end to end
 - `test_deductible.py` — tests for the deterministic parts
 - Sample data + a clean MIT license.
 
