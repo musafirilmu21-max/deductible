@@ -95,13 +95,18 @@ def build_prompt(desc: str, amount: str) -> str:
     return PROMPT_TMPL.format(cats=cats, desc=desc, amount=amount)
 
 
-def keyword_classify(desc: str) -> str:
-    """Deterministic classifier. Used as --dry-run and as a safety net."""
+def keyword_match(desc: str):
+    """Return the category if a keyword matched, else None (unknown merchant)."""
     d = (desc or "").lower()
     for cat, kws in KEYWORDS.items():
         if any(k in d for k in kws):
             return cat
-    return "Other/Personal"
+    return None
+
+
+def keyword_classify(desc: str) -> str:
+    """Deterministic classifier. Used as --dry-run and as a safety net."""
+    return keyword_match(desc) or "Other/Personal"
 
 
 def parse_label(raw: str, desc: str) -> str:
@@ -144,6 +149,21 @@ class LLM:
         )
         raw = resp["choices"][0]["message"]["content"]
         return parse_label(raw, desc)
+
+
+class Hybrid:
+    """Rules first (fast, free, exact for known merchants); the LLM only runs on
+    the unknown long tail. Cheaper than model-only and generalizes where rules rot.
+    """
+
+    def __init__(self, model_path: str, n_ctx: int = 512, n_threads: int | None = None):
+        self.llm = LLM(model_path, n_ctx=n_ctx, n_threads=n_threads)
+
+    def classify(self, desc: str, amount: str) -> str:
+        matched = keyword_match(desc)
+        if matched:
+            return matched
+        return self.llm.classify(desc, amount)
 
 
 def process(csv_path: str, classify_fn, out_path: str) -> dict:
@@ -212,15 +232,20 @@ def main(argv=None):
     ap.add_argument("--out", default="taxes_ready.csv", help="Output CSV path.")
     ap.add_argument("--model", default="models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
                     help="Path to a GGUF open-weight model.")
+    ap.add_argument("--mode", choices=["hybrid", "model", "dry"], default="hybrid",
+                    help="hybrid=rules+LLM (default); model=LLM only; dry=rules only.")
     ap.add_argument("--dry-run", action="store_true",
-                    help="Skip the model; use the deterministic keyword classifier.")
+                    help="Shortcut for --mode dry (keyword classifier only).")
     args = ap.parse_args(argv)
-
     if args.dry_run:
+        args.mode = "dry"
+
+    if args.mode == "dry":
         classify_fn = lambda desc, amount: keyword_classify(desc)  # noqa: E731
+    elif args.mode == "model":
+        classify_fn = LLM(args.model).classify
     else:
-        llm = LLM(args.model)
-        classify_fn = llm.classify
+        classify_fn = Hybrid(args.model).classify
 
     result = process(args.csv, classify_fn, args.out)
     print_summary(result)

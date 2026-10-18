@@ -19,15 +19,16 @@ bank.csv  ──►  local open-weight model  ──►  taxes_ready.csv + summa
 ```
 
 1. **The model does the fuzzy part.** Each transaction is classified into one of
-   10 fixed expense categories. The prompt asks for a single number 1–10 (a
-   constrained output tiny models can actually follow), with one few-shot example
-   per category.
+   10 fixed expense categories. In `--mode hybrid` (the default), deterministic
+   rules handle known merchants first and the LLM only runs on the unknown tail;
+   the prompt asks for a single number 1–10 (a constrained output tiny models can
+   actually follow), with one few-shot example per category.
 2. **The boring part is deterministic.** Tax treatment (meals 50%, everything
    else 100%, personal 0%), totals, and review flags are plain, auditable code —
    not model output.
 3. **A keyword net is the safety fallback.** If the model emits something
-   unparseable, a deterministic matcher catches it. A `--dry-run` mode runs the
-   keyword net alone with no model at all.
+   unparseable, a deterministic matcher catches it. `--mode dry` runs the keyword
+   net alone with no model at all.
 
 ## Quick start
 
@@ -87,24 +88,23 @@ earns its place.
 
 Run `python benchmark.py` yourself. Results on a commodity laptop, CPU-only:
 
-| dataset | keyword | 0.5B | 1.5B | 3B |
-|---|---|---|---|---|
-| Clean merchant names | 13/15 | 5/15 | 11/15 | 10/15 |
-| Messy bank strings | 10/14 | 6/14 | 7/14 | 7/14 |
+| dataset | keyword | 0.5B | 1.5B | 3B | **hybrid** |
+|---|---|---|---|---|---|
+| Clean merchant names | 13/15 | 5/15 | 11/15 | 10/15 | **12/15** |
+| Messy bank strings | 10/14 | 6/14 | 7/14 | 7/14 | **12/14** |
 
 Read that honestly — it is the whole story:
 
 - On **clean, well-known merchant names**, a hand-tuned keyword table is hard to
-  beat. It was written against exactly those names.
-- On **messy real-world strings** ("SQ *BLUE BOTTLE 4471"), everything drops.
-  Small local models do **not** magically beat rules at classification.
-- So why run a model at all? Three real reasons: (1) zero rule maintenance for
-  new merchants, (2) private and offline, and (3) the actual payoff — it powers
-  the natural-language layer in `ask.py`. Turning a spreadsheet into a bookkeeper
-  you can *talk to* is something no keyword table can do.
+  beat (it was written against those exact names). On **messy real-world strings**
+  ("SQ *BLUE BOTTLE 4471"), rules rot (10/14) and the model alone is worse (7/14).
+- **Neither is good enough on its own.** The hybrid — rules for known merchants,
+  LLM for the unknown tail — hits **12/14 on the messy set**, better than either.
+- And the model's real payoff is `ask.py`: turning a spreadsheet into a bookkeeper
+  you can *talk to*, grounded in numbers Python computed. No keyword table can do that.
 
-That is the honest state of small open models on a laptop today. A bigger model,
-or a fine-tune on your own ledger, is one download away — and that is the entire
+The architecture, in one line: **rules classify, Python calculates, the LLM explains.**
+A bigger model or a fine-tune on your own ledger is one download away — the entire
 point of open weights.
 
 ## License

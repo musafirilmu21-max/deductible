@@ -5,7 +5,7 @@ Shows the real trade-off that open weights buy you — you can swap model size/c
 against accuracy without changing a line of app code or sending data anywhere.
 """
 import tempfile
-from deductible import process, keyword_classify, LLM
+from deductible import process, keyword_classify, keyword_match, LLM
 
 GROUND_TRUTH = {
     "ADOBE CREATIVE CLOUD MONTHLY": "Software & Subscriptions",
@@ -50,37 +50,33 @@ def main():
     csvs = [("Clean merchant names", "sample_data/transactions.csv"),
             ("Messy bank strings", "sample_data/transactions_messy.csv")]
 
-    llm05 = llm15 = None
-    for path in ["models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-                 "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-                 "models/qwen2.5-3b-instruct-q4_k_m.gguf"]:
+    # (label, classify_fn). Load the 1.5B once and reuse it for the hybrid too.
+    cands = [("keyword", lambda d, a: keyword_classify(d))]
+    llm15 = None
+    for path, label in [("models/qwen2.5-0.5b-instruct-q4_k_m.gguf", "0.5B"),
+                        ("models/qwen2.5-1.5b-instruct-q4_k_m.gguf", "1.5B"),
+                        ("models/qwen2.5-3b-instruct-q4_k_m.gguf", "3B")]:
         try:
             m = LLM(path)
-            if "0.5b" in path:
-                llm05 = m
-            elif "1.5b" in path:
+            cands.append((label, m.classify))
+            if label == "1.5B":
                 llm15 = m
         except FileNotFoundError:
             pass
+    if llm15:
+        cands.append(("hybrid", lambda d, a: keyword_match(d) or llm15.classify(d, a)))
 
-    models = [("0.5B", llm05), ("1.5B", llm15)]
-    # include 3B if present
-    try:
-        models.append(("3B", LLM("models/qwen2.5-3b-instruct-q4_k_m.gguf")))
-    except FileNotFoundError:
-        pass
-
-    print(f"  {'dataset':<24}{'keyword':>10}" + "".join(f"{lbl:>9}" for lbl, _ in models))
+    header = f"  {'dataset':<22}" + "".join(f"{lbl:>9}" for lbl, _ in cands)
+    print(header)
     for label, path in csvs:
-        kw = score(path, lambda d, a: keyword_classify(d))
-        line = f"  {label:<24}{kw[0]:>4}/{kw[1]:<5}"
-        for _, m in models:
-            c, n = score(path, m.classify) if m else (0, 0)
+        line = f"  {label:<22}"
+        for _, fn in cands:
+            c, n = score(path, fn)
             line += f"{c:>6}/{n:<3}"
         print(line)
 
-    print("\n  -> Keyword rules score high on the clean set they were written for,")
-    print("     but rot on real bank garbage. The LLM generalises with no rules.")
+    print("\n  -> Rules alone rot on real bank garbage; the model alone is worse on")
+    print("     clean names. The hybrid (rules + LLM on the unknown tail) is best of both.")
 
 
 if __name__ == "__main__":

@@ -5,3 +5,7 @@ taxes_ready*.csv
 __pycache__/
 *.pyc
 .venv*/
+# Secrets — never commit
+devkey.txt
+*.key
+*_api_key.txt
