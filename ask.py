@@ -45,6 +45,8 @@ def snapshot(rows):
     top = sorted([(c, v) for c, v in ded.items() if v > 0], key=lambda x: -x[1])[:3]
     for i, (c, v) in enumerate(top, 1):
         lines.append(f"- Deductible category #{i}: {c} = ${v:,.2f}")
+    if top:
+        lines.append(f"- Top {len(top)} categories combined: ${sum(v for _, v in top):,.2f}")
     flagged = [r for r in rows if r.get("review")]
     if flagged:
         lines.append("\nFlagged for review (possible misclassification or large amount):")

@@ -8,7 +8,7 @@ Your bank exports never leave your laptop. Runs on an open-weight LLM (GGUF via
 
 Freelancers hate two things at tax time: manually tagging every bank line, and
 uploading their whole financial life to yet another SaaS. Deductible does the
-tagging offline and hands you a Schedule-C-ready CSV — nothing but your laptop
+tagging offline and hands you a tax-prep starter CSV your accountant can drop into Schedule C — nothing but your laptop
 ever sees the data.
 
 ## How it works

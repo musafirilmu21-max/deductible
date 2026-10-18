@@ -43,7 +43,7 @@ Services ($482.00). You should double-check the classification of the MACBOOK PR
 equipment and personal expenses, respectively.
 ```
 
-Note the design choice: **the model never does the math.** The snapshot is precomputed by auditable Python; the model only explains and advises. That is the difference between a demo and something you would trust with your taxes.
+Note the design choice: **the model never does the math.** The snapshot is precomputed by auditable Python; the model only explains and advises. That is the difference between a toy and a tool your accountant does not have to re-check from scratch.
 
 ## Code
 
@@ -83,7 +83,7 @@ Honest scope: this is a categorisation aid, not a tax filing. It is the input la
 
 The buyer is the **solo 1099 contractor** — a designer, developer, VA, or consultant doing $40–150k/yr. Their pain is real and monthly: a bank export that reads like `SQ *BLUE BOTTLE 4471` and a tax bill that punishes a mislabelled meal.
 
-What would they pay? A freelance accountant charges **$150–400/hr**; a year-end session alone is several hundred dollars, mostly billed for what Deductible does in minutes. At **$15/quarter** ($60/yr — under the cost of one accountant hour) the tool pays for itself the first month if it recovers one miscategorised $200 purchase. The honest pitch is not "replaces your accountant" — it is "stops you paying your accountant to tag coffee." That is a real willingness-to-pay signal, not a land-grab TAM.
+What would they pay? A freelance accountant charges **$150–400/hr**; a year-end session alone is several hundred dollars, mostly billed for what Deductible does in minutes. At **$15/quarter** ($60/yr — under the cost of one accountant hour) the tool pays for itself the first month if it saves more than its price by cutting an accountant hour that would otherwise be spent tagging those same transactions. The honest pitch is not "replaces your accountant" — it is "stops you paying your accountant to tag coffee." That is a real willingness-to-pay signal, not a land-grab TAM.
 
 The unit economics work *because* it is open weights: $0 marginal inference cost, so the $15 is nearly pure margin once built.
 

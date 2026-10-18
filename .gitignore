@@ -9,3 +9,8 @@ __pycache__/
 devkey.txt
 *.key
 *_api_key.txt
+
+# generated
+crawl_out*.csv
+demo_out*.csv
+web_server.log
