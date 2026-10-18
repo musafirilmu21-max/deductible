@@ -1,5 +1,7 @@
 # Deductible
 
+[![CI](https://github.com/musafirilmu21-max/deductible/actions/workflows/ci.yml/badge.svg)](https://github.com/musafirilmu21-max/deductible/actions/workflows/ci.yml)
+
 **A local-first expense categorizer for freelancers.**
 Your bank exports never leave your laptop. Runs on an open-weight LLM (GGUF via
 `llama-cpp-python`). $0 per run. Swap the model to trade speed for accuracy.
