@@ -1,0 +1,7 @@
+# Model weights (large — download separately, see README)
+models/*.gguf
+# Generated output
+taxes_ready*.csv
+__pycache__/
+*.pyc
+.venv*/
