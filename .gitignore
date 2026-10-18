@@ -14,3 +14,8 @@ devkey.txt
 crawl_out*.csv
 demo_out*.csv
 web_server.log
+
+# working notes — never public (audit history, credential paths, publish runbook)
+HANDOFF.md
+PUBLISH.md
+DEV_POST.md
