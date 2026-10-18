@@ -1,0 +1,19 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # No pip install step on purpose: the classifier and the benchmark are
+      # stdlib-only, and llama-cpp-python is imported lazily. Without a GGUF the
+      # benchmark prints the keyword row and skips the model rows instead of failing.
+      - name: Unit tests
+        run: python test_deductible.py
+      - name: Keyword benchmark (model rows skip without a GGUF)
+        run: python benchmark.py
