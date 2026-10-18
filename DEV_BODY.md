@@ -53,7 +53,7 @@ Note the design choice: **the model never does the math.** The snapshot is preco
 
 ### See it running
 
-![Deductible ledger UI: a messy bank statement, an offline answer, and a categorized ledger](https://raw.githubusercontent.com/musafirilmu21-max/deductible/main/demo_screenshot.png?v=2)
+![Deductible ledger UI: a messy bank statement, an offline answer, and a categorized ledger](https://raw.githubusercontent.com/musafirilmu21-max/deductible/main/demo_screenshot.png?v=3)
 
 That is a real run of the browser UI (`web.py`), captured by an automated Playwright test (`e2e_web_test.py`) that loads the page, asks a question, and checks the rendered ledger and answer — so the screenshot is reproducible, not hand-typed.
 
