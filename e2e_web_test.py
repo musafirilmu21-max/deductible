@@ -65,7 +65,10 @@ def main():
             page.fill("#q", "What are my biggest deductible expenses?")
             page.click("#ask")
             page.wait_for_selector("#out:not([hidden])", timeout=120_000)
-            page.wait_for_function("!document.getElementById('out').textContent.includes('Error:')")
+            page.wait_for_function(
+                "!/(Error:|Could not read that|Could not reach the local model)/"
+                ".test(document.getElementById('out').textContent)"
+            )
 
             out = page.inner_text("#out")
             print("=== OUT ===\n", out[:1500])

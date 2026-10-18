@@ -265,7 +265,7 @@ def get_hybrid():
     if _HYBRID is None:
         with _MODEL_LOCK:
             if _HYBRID is None:
-                _HYBRID = Hybrid(str(MODEL))
+                _HYBRID = Hybrid(str(MODEL), n_ctx=2048)  # the snapshot prompt is ~450 tokens
     return _HYBRID
 
 
@@ -313,7 +313,9 @@ class Handler(BaseHTTPRequestHandler):
                         f.write(text)
                         tmp = f.name
                     outp = tmp + ".out"
-                    D.process(tmp, get_hybrid().classify, outp)
+                    # the classify callback runs create_chat_completion, so it needs the lock too
+                    with _MODEL_LOCK:
+                        D.process(tmp, get_hybrid().classify, outp)
                     rows = categorize_csv(pathlib.Path(outp).read_text(encoding="utf-8"))
                 finally:
                     if tmp:
@@ -329,7 +331,7 @@ class Handler(BaseHTTPRequestHandler):
                     messages=[
                         {"role": "system", "content": "You are an accurate, practical bookkeeper for a self-employed freelancer. Answer ONLY from the financial snapshot. Cite concrete dollar figures that already appear in the snapshot. Do NOT add, subtract, or estimate any numbers yourself. If the snapshot lacks the answer, say so plainly. Be concise; use a short bulleted list, one item per line."},
                         {"role": "user", "content": f"FINANCIAL SNAPSHOT:\n{snap}\n\nQUESTION: {question}"},
-                    ], max_tokens=320, temperature=0.2)
+                    ], max_tokens=512, temperature=0.2)
             answer = resp["choices"][0]["message"]["content"].strip()
             return self._send(200, json.dumps({"snapshot": snap, "answer": answer}).encode())
         except SystemExit:

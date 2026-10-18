@@ -40,12 +40,14 @@ pip install -r requirements.txt
 
 # download an open-weight model (pick your size)
 #   https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
+mkdir -p models          # not in git: .gitignore excludes models/*.gguf
 curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
   https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
 
 python deductible.py --csv sample_data/transactions.csv --out taxes_ready.csv
 python deductible.py --csv sample_data/transactions.csv --dry-run   # no model
 python benchmark.py                                                 # accuracy table
+python benchmark_heldout.py                                         # 150-row held-out set
 python test_deductible.py                                           # tests
 ```
 
@@ -59,6 +61,7 @@ python ask.py --csv demo.csv --question "What are my biggest deductible expenses
 **Browser UI + end-to-end test** (the screenshot in the submission):
 
 ```bash
+pip install playwright && playwright install chromium   # only for the E2E test
 python web.py                      # serves http://127.0.0.1:8000 (needs a GGUF)
 python e2e_web_test.py             # Playwright: drives the page, asserts, screenshots
 ```
@@ -83,11 +86,16 @@ python ask.py --csv taxes_ready.csv \
 ```
 
 ```
-The biggest deductible expenses are for Equipment ($1,999.00) and Professional
-Services ($482.00). You should double-check the classification of the MACBOOK PRO
-14 M4 and the NETFLIX SUBSCRIPTION to ensure they are correctly categorized as
-equipment and personal expenses, respectively.
+The biggest deductible expenses are in the Equipment category, totaling
+$1,999.00. This should be double-checked to ensure it is correctly classified as
+equipment rather than other personal expenses. The Professional Services
+category, at $450.00, is also a significant expense that should be verified.
 ```
+
+*(Real `--mode hybrid` output on `sample_data/transactions.csv`, total $3,381.00.
+On this clean set every row matched a keyword rule, so the LLM never fired — that
+is the hybrid working as designed, and it is why the run is fast. The messy set
+below is where the model actually earns its keep.)*
 
 The LLM never does arithmetic — the snapshot is precomputed by auditable Python.
 The model only explains and advises, which is exactly where a language model
