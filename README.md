@@ -127,8 +127,13 @@ Read that honestly - it is the whole story:
   (15/15, 13/14). No detectable model contribution, as expected on a tuned set.
 - On **150 held-out merchants the keywords were never tuned on**, rules collapse to
   **23%** (unseen names fall through to Other/Personal), the model alone reaches
-  **46%**, and the hybrid reaches **49% - 2.2x the rules.** That is the real case
-  for the model: it generalizes to merchants you have not seen.
+  **46%**, and the hybrid reaches **49% - 2.2x the rules** (exact McNemar, p<0.001).
+- The hybrid's edge over the *model alone* is 74 vs 69 - discordant pairs 8 to 3,
+  p=0.23, i.e. **not distinguishable from noise**. The honest case for the hybrid is
+  cost and latency (23s vs 28s on this set), not accuracy.
+- The model has one total blind spot: every Equipment merchant in the held-out set
+  (Dell, Lenovo, Logitech, Samsung, Sony, Bose, Anker, Wacom, GoPro, DJI, Razer, HP,
+  Asus, Best Buy, Microsoft Store) comes back as Software & Subscriptions - 0/15.
 - 49% is still only half right, which is why every model-classified row is flagged
   for human review. The tool sorts the easy ones and flags the rest; it does not file.
 - And the model's real payoff is `ask.py`: turning a spreadsheet into a bookkeeper

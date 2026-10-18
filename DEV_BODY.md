@@ -4,7 +4,7 @@ Every freelancer knows the tax-time ritual: scroll a year of bank lines, tag eac
 
 So I built **Deductible** — a local-first bookkeeping copilot. It tags your transactions into 10 expense categories, applies the right tax treatment, exports a tax-prep starter CSV (categorised spending + deductible estimates) your accountant can drop into Schedule C, and then lets you *ask your books questions in plain English* — with no data ever leaving the laptop.
 
-The classifier is a **hybrid**: deterministic rules handle merchants you have seen before (fast, free, exact), and an open-weight LLM handles the unknown long tail — the `SQ *BLUE BOTTLE 4471` garbage that makes keyword tables rot. I benchmarked it honestly, and the result was not what I expected: at this sample size the model added zero net accuracy — which is the real story.
+The classifier is a **hybrid**: deterministic rules handle merchants you have seen before (fast, free, exact), and an open-weight LLM handles the unknown long tail — the `SQ *BLUE BOTTLE 4471` garbage that makes keyword tables rot. I benchmarked it three ways and got two answers that disagree: on the 29 transactions I tuned the rules against, the model added **nothing**. On 150 merchants I deliberately kept out of the keyword table, the rules collapsed to 23% and the hybrid reached 49%. Both numbers are in here — along with the one category where the model is simply blind, and the awkward detail that the hybrid's win over the *rules* is decisive (p<0.001) while its win over the *model alone* is statistically nothing (49% vs 46%, p=0.23).
 
 ## What I Built
 
@@ -27,23 +27,27 @@ The ask layer prints a snapshot and then the model's answer:
 
 ```plaintext
 Headline facts (precomputed):
-- Total estimated deductible: $3,488.11
+- Total estimated deductible: $3,381.00
 - Deductible category #1: Equipment = $1,999.00
-- Deductible category #2: Professional Services = $482.00
+- Deductible category #2: Professional Services = $450.00
 - Deductible category #3: Travel = $371.60
+- Top 3 categories combined: $2,820.60
+
 Flagged for review (possible misclassification or large amount):
 - MACBOOK PRO 14 M4: $1,999.00 -> Equipment
+- DOCTOR VISIT COPAY: $40.00 -> Other/Personal
 - NETFLIX SUBSCRIPTION: $15.49 -> Other/Personal
+- WHOLE FOODS GROCERIES: $134.22 -> Other/Personal
 
 ANSWER
 --------
-The biggest deductible expenses are for Equipment ($1,999.00) and Professional
-Services ($482.00). You should double-check the classification of the MACBOOK PRO
-14 M4 and the NETFLIX SUBSCRIPTION to ensure they are correctly categorized as
-equipment and personal expenses, respectively.
+The biggest deductible expenses are in the Equipment category, totaling
+$1,999.00. This should be double-checked to ensure it is correctly classified as
+equipment rather than other personal expenses. The Professional Services
+category, at $450.00, is also a significant expense that should be verified.
 ```
 
-*(That run: `sample_data/transactions.csv`, `--mode hybrid`, `qwen2.5-1.5b q4_k_m`. The screenshot below uses the messier `transactions_messy.csv`, which is why its total differs.)*
+*(That run: `sample_data/transactions.csv`, `--mode hybrid`, `qwen2.5-1.5b q4_k_m`, pasted verbatim — all four flags, no trimming. Note what did **not** happen: on this clean set every row matched a keyword rule, so the model never fired. That is the hybrid working as designed, and it is why this run takes under a second. The messy set below is where the model actually earns its keep; the screenshot uses `transactions_messy.csv`, which is why its total differs.)*
 
 Note the design choice: **the model never does the math.** The snapshot is precomputed by auditable Python; the model only explains and advises. That is the difference between a toy and a tool your accountant does not have to re-check from scratch.
 
@@ -62,10 +66,13 @@ GitHub: https://github.com/musafirilmu21-max/deductible
 
 - `deductible.py` — categorizer (`--mode hybrid|model|dry`) + CSV export
 - `ask.py` — the "talk to your books" layer
-- `benchmark.py` — the accuracy table below
+- `benchmark.py` — the small-set accuracy table above
+- `benchmark_heldout.py` — the 150-merchant held-out set (the numbers that matter)
 - `web.py` — a local browser UI (the screenshot above)
 - `e2e_web_test.py` — Playwright test that drives the UI end to end
-- `test_deductible.py` — tests for the deterministic parts
+- `test_deductible.py` — 13 tests for the deterministic parts
+- `.github/workflows/ci.yml` — CI runs the tests and the keyword benchmark on every push
+  ([badge](https://github.com/musafirilmu21-max/deductible/actions/workflows/ci.yml))
 - Sample data + a clean MIT license.
 
 ## How I Built It
@@ -88,6 +95,14 @@ And on those 29 rows the hybrid tied the keyword baseline exactly (15/15 clean, 
 | **held-out, 150 unseen merchants** | **34/150 (23%)** | **69/150 (46%)** | **74/150 (49%)** |
 
 There the picture changes completely. Unseen merchants fall straight through a keyword table to "Other/Personal", so rules get 23%. The model alone gets 46% by generalizing from the merchant string. The hybrid gets **49% — 2.2× the rules** — because it keeps rules for the merchants they know and hands only the unknowns to the model.
+
+Two things that headline hides, and they are the more interesting findings.
+
+**The rules are worse than 23%.** Only 124 of the 150 rows have no keyword match at all; 11 of the rules' 34 "correct" answers are correct purely because the fallback default (`Other/Personal`) happened to be the right label. Strip those out and the keyword table is really making 23 genuine hits, not 34.
+
+**The model has one total blind spot.** Every Equipment merchant in the held-out set — Dell, Lenovo, Logitech, Samsung, Sony, Bose, Anker, Wacom, GoPro, DJI, Razer, HP, Asus, Best Buy, Microsoft Store — comes back as `Software & Subscriptions`. **0 out of 15.** That is not a model that generalizes; that is a taxonomy it never learned, and prompt tuning did not fix it. It is also the best argument for the review box: a confident wrong answer on a $2,000 laptop is exactly what you want flagged, never filed.
+
+And the significance check is unkind in one direction and generous in the other. Hybrid vs rules is decisive (exact McNemar, p<0.001). Hybrid vs the model alone is 74 vs 69 correct — discordant pairs 8 to 3, p=0.23, i.e. **not distinguishable from noise**. So the honest case for the hybrid is not "more accurate than the model". It is *cheaper and faster*: the rules answer the 26 rows they recognise instantly and for free, and the model only runs on the 124 it cannot. On this set that is 23s versus 28s — about 17% faster, measured on CPU, single-threaded. I would rather ship the architecture that is meaningfully faster at statistically identical accuracy and say so, than claim a 3-point win I cannot defend.
 
 And 49% is still only half right. That is exactly why every model-classified row lands in the "Review these" box: the model is a generalizing first pass, not an oracle. The product is "sort the easy ones and flag the rest for you", not "file your taxes".
 
