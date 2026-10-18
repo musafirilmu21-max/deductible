@@ -17,6 +17,8 @@ from playwright.sync_api import sync_playwright
 HERE = Path(__file__).parent
 URL = "http://127.0.0.1:8000"
 PY = str(HERE.parent / ".venv-llm" / "Scripts" / "python.exe")
+if not Path(PY).exists():
+    PY = sys.executable  # fall back to the interpreter running this test
 
 
 def ensure_server():
@@ -67,11 +69,15 @@ def main():
 
             out = page.inner_text("#out")
             print("=== OUT ===\n", out[:1500])
-            # new ledger UI: a table + "Your bookkeeper says" answer block
+            # ledger UI: table + answer block + flagged block
             assert "Your bookkeeper says" in out, "answer block present"
             assert "Equipment" in out, "grounded category present"
             assert "Estimated deductible" in out, "total row present"
-            assert "$" in out, "dollar figures present"
+            # the ANSWER block itself must cite a dollar figure (not just the table)
+            answer_text = page.inner_text(".answer")
+            assert "$" in answer_text, "answer cites a dollar figure"
+            # model-classified rows must surface in the review box
+            assert page.query_selector(".flagblock") is not None, "flagged block rendered"
 
             # 4. Screenshot as visual proof
             shot = HERE / "demo_screenshot.png"

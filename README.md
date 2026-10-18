@@ -47,6 +47,23 @@ python benchmark.py                                                 # accuracy t
 python test_deductible.py                                           # tests
 ```
 
+**Try it in 60 seconds with no model download** (rules-only, deterministic):
+
+```bash
+python deductible.py --csv sample_data/transactions_messy.csv --mode dry --out demo.csv
+python ask.py --csv demo.csv --question "What are my biggest deductible expenses?"  # needs a model
+```
+
+**Browser UI + end-to-end test** (the screenshot in the submission):
+
+```bash
+python web.py                      # serves http://127.0.0.1:8000 (needs a GGUF)
+python e2e_web_test.py             # Playwright: drives the page, asserts, screenshots
+```
+
+`web.py` is a local demo, not a hardened server: it binds 127.0.0.1 and caps request
+size, but do not expose it publicly. See `demo_screenshot.png`.
+
 Input CSV needs `date,description,amount` columns. Output adds `category`,
 `deductible_pct`, `deductible_amount`, and a `review` flag for items worth a
 human glance (personal or > $1000).

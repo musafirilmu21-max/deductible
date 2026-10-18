@@ -41,7 +41,9 @@ GROUND_TRUTH = {
 }
 
 def score(csv_path, classify_fn):
-    res = process(csv_path, classify_fn, tempfile.mktemp(suffix=".csv"))
+    import os
+    d = tempfile.mkdtemp()
+    res = process(csv_path, classify_fn, os.path.join(d, "out.csv"))
     correct = sum(1 for r in res["rows"] if GROUND_TRUTH.get(r["description"]) == r["category"])
     return correct, len(res["rows"])
 
@@ -51,7 +53,7 @@ def main():
             ("Messy bank strings", "sample_data/transactions_messy.csv")]
 
     # (label, classify_fn). Load the 1.5B once and reuse it for the hybrid too.
-    cands = [("keyword", lambda d, a: keyword_classify(d))]
+    cands = [("keyword", lambda d, a: (keyword_classify(d), "rule"))]
     llm15 = None
     for path, label in [("models/qwen2.5-0.5b-instruct-q4_k_m.gguf", "0.5B"),
                         ("models/qwen2.5-1.5b-instruct-q4_k_m.gguf", "1.5B"),
@@ -61,10 +63,13 @@ def main():
             cands.append((label, m.classify))
             if label == "1.5B":
                 llm15 = m
-        except FileNotFoundError:
-            pass
+        except (FileNotFoundError, SystemExit, ImportError, OSError) as e:
+            print(f"  (skipping {label}: no model file / llama-cpp not installed)")
     if llm15:
-        cands.append(("hybrid", lambda d, a: keyword_match(d) or llm15.classify(d, a)))
+        def _hybrid(d, a):
+            m = keyword_match(d)
+            return (m, "rule") if m else llm15.classify(d, a)
+        cands.append(("hybrid", _hybrid))
 
     header = f"  {'dataset':<22}" + "".join(f"{lbl:>9}" for lbl, _ in cands)
     print(header)

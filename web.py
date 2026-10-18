@@ -7,11 +7,13 @@ a plain-English question about your books. Fully offline; the LLM runs locally.
 Run:  python web.py                 # serves http://127.0.0.1:8000
 """
 import json
+import os
 import pathlib
 import tempfile
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from deductible import LLM
+from deductible import LLM, Hybrid
 from ask import snapshot, load_rows
 
 HERE = pathlib.Path(__file__).parent
@@ -122,6 +124,10 @@ INDEX = r"""<!doctype html>
   .answer h3{ margin:0 0 .4rem; font-family:Georgia,serif; font-size:.95rem;
               font-weight:600; color:var(--ink-soft) }
   .flag{ color:var(--stamp); font-size:.78rem }
+  .flagblock{ margin-top:1rem; padding:.7rem .9rem; border:1px dashed var(--stamp); border-radius:2px }
+  .flagblock strong{ font-size:.82rem; color:var(--ink-soft) }
+  .flagblock ul{ margin:.4rem 0 0; padding-left:1.1rem }
+  .flagblock li{ font-size:.85rem; margin:.15rem 0 }
   .hint{ font-size:.8rem; color:var(--ink-soft); margin-top:.35rem }
   .empty{ color:var(--ink-soft); font-size:.92rem; font-style:italic }
   footer{ padding:.9rem 1.6rem 1.2rem 88px; color:var(--ink-soft); font-size:.78rem;
@@ -186,38 +192,39 @@ function updateCount(){
 }
 csv.oninput = () => { ask.disabled = !csv.value.trim(); updateCount(); };
 
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function render(data) {
   const snap = data.snapshot || '';
   const lines = snap.split(NL);
-  const rows = [];
-  let total = '';
-  let inFacts = false;
+  const rows = []; let total = ''; const flagged = [];
+  let section = '';
   for (const ln of lines) {
+    if (/^Spending by category/.test(ln)) section = 'rows';
+    if (/^Headline facts/.test(ln)) section = 'facts';
+    if (/^Flagged for review/.test(ln)) section = 'flags';
     const m = ln.match(/^- (.+?): \$([\d,]+\.\d\d) \| \$([\d,]+\.\d\d) deductible/);
     if (m) { rows.push({cat:m[1], spent:m[2], ded:m[3]}); continue; }
     const t = ln.match(/^- Total estimated deductible: \$([\d,]+\.\d\d)/);
-    if (t) { total = t[1]; }
-    if (/^Headline facts/.test(ln)) inFacts = true;
+    if (t) total = t[1];
+    const f = ln.match(/^- (.+?): \$([\d,.]+) -> (.+)$/);
+    if (f && section === 'flags') flagged.push({desc:f[1], amt:f[2], cat:f[3]});
   }
   let html = '<table class="ledger"><thead><tr><th>Category</th><th class="num">Spent</th><th class="num">Deductible</th></tr></thead><tbody>';
-  if (rows.length === 0) {
-    html += '<tr><td colspan="3" class="empty">No categorized rows yet.</td></tr>';
-  } else {
-    for (const r of rows) {
-      html += '<tr><td class="cat">' + r.cat + '</td><td class="num">$' + r.spent +
-              '</td><td class="num money">$' + r.ded + '</td></tr>';
-    }
-  }
+  if (rows.length === 0) html += '<tr><td colspan="3" class="empty">No categorized rows yet.</td></tr>';
+  else for (const r of rows) html += '<tr><td class="cat">' + esc(r.cat) + '</td><td class="num">$' + esc(r.spent) + '</td><td class="num money">$' + esc(r.ded) + '</td></tr>';
   html += '</tbody></table>';
-  if (total) {
-    html += '<div class="total"><span class="lbl">Estimated deductible</span><span class="amt">$' + total + '</span></div>';
+  if (total) html += '<div class="total"><span class="lbl">Estimated deductible</span><span class="amt">$' + esc(total) + '</span></div>';
+  if (flagged.length) html += '<div class="hint" style="margin:.35rem 0 0">Estimate only &mdash; verify the flagged items below before filing.</div>';
+  if (flagged.length) {
+    html += '<div class="flagblock"><strong>Review these (model-classified or personal — verify before filing)</strong><ul>';
+    for (const f of flagged) html += '<li class="flag">' + esc(f.desc) + ': $' + esc(f.amt) + ' &rarr; ' + esc(f.cat) + '</li>';
+    html += '</ul></div>';
   }
-  let ans = (data.answer || '').split(NL).join('<br>');
+  const ans = (data.answer || '').split(NL).map(esc).join('<br>');
   html += '<div class="answer"><h3>Your bookkeeper says</h3>' + ans + '</div>';
   out.innerHTML = html;
   out.hidden = false;
 }
-
 ask.onclick = async () => {
   ask.disabled = true; const old = ask.textContent; ask.textContent = 'Reading your books…'; out.hidden = true;
   try {
@@ -248,9 +255,21 @@ def categorize_csv(text):
     return rows
 
 
-class Handler(BaseHTTPRequestHandler):
-    llm = None
+"""Shared, lazily-loaded model. llama-cpp Llama is not safe for concurrent
+completion, so every call goes through _MODEL_LOCK."""
+_MODEL_LOCK = threading.Lock()
+_HYBRID = None
 
+def get_hybrid():
+    global _HYBRID
+    if _HYBRID is None:
+        with _MODEL_LOCK:
+            if _HYBRID is None:
+                _HYBRID = Hybrid(str(MODEL))
+    return _HYBRID
+
+
+class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -270,38 +289,53 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/ask":
             return self._send(404, b"not found")
-        length = int(self.headers.get("Content-Length", 0))
         try:
+            try:
+                length = int(self.headers.get("Content-Length", "") or 0)
+            except (TypeError, ValueError):
+                return self._send(400, json.dumps({"error": "Bad Content-Length"}).encode())
+            if length < 0 or length > 1_048_576:
+                return self._send(413, json.dumps({"error": "Request too large (max 1 MiB)"}).encode())
             req = json.loads(self.rfile.read(length) or b"{}")
-        except Exception as e:
-            return self._send(400, json.dumps({"error": str(e)}).encode())
-        text = req.get("csv", "")
-        question = req.get("question", "Summarize my biggest deductible expenses.")
-
-        # Build a categorized view from the pasted CSV (accept raw or already-categorized)
-        try:
+            if not isinstance(req, dict):
+                return self._send(400, json.dumps({"error": "Expected a JSON object"}).encode())
+            text = req.get("csv", "")
+            question = req.get("question", "Summarize my biggest deductible expenses.")
+            if not isinstance(text, str) or not isinstance(question, str):
+                return self._send(400, json.dumps({"error": "csv and question must be strings"}).encode())
+            import deductible as D
             rows = categorize_csv(text)
-            # if already categorized, reuse; else run hybrid classify
-            if "category" not in (rows[0] if rows else {}):
-                # run the CLI categorizer on a temp file
-                with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="") as f:
-                    f.write(text)
-                    tmp = f.name
-                import deductible as D
-                D.process(tmp, D.Hybrid(str(MODEL)).classify, tmp + ".out")
-                rows = categorize_csv(pathlib.Path(tmp + ".out").read_text(encoding="utf-8"))
+            # If the pasted CSV is raw (no category column), categorize with the shared hybrid.
+            if rows and "category" not in rows[0]:
+                tmp = None
+                try:
+                    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="") as f:
+                        f.write(text)
+                        tmp = f.name
+                    outp = tmp + ".out"
+                    D.process(tmp, get_hybrid().classify, outp)
+                    rows = categorize_csv(pathlib.Path(outp).read_text(encoding="utf-8"))
+                finally:
+                    if tmp:
+                        for p in (tmp, tmp + ".out"):
+                            try: os.unlink(p)
+                            except OSError: pass
             snap = snapshot(rows)
-            if self.__class__.llm is None:
-                self.__class__.llm = LLM(str(MODEL))
-            ans = self.__class__.llm.llm.create_chat_completion(
-                messages=[
-                    {"role": "system", "content": "You are an accurate, practical bookkeeper for a self-employed freelancer. Answer ONLY from the financial snapshot. Cite concrete dollar figures that already appear in the snapshot. Do NOT add, subtract, or estimate any numbers yourself. If the snapshot lacks the answer, say so plainly. Be concise; use a short bulleted list, one item per line."},
-                    {"role": "user", "content": f"FINANCIAL SNAPSHOT:\n{snap}\n\nQUESTION: {question}"},
-                ], max_tokens=320, temperature=0.2)
-            answer = ans["choices"][0]["message"]["content"].strip()
+            if not rows:
+                return self._send(200, json.dumps({"snapshot": snap, "answer": "Paste some transactions first."}).encode())
+            hybrid = get_hybrid()
+            with _MODEL_LOCK:
+                resp = hybrid.llm.llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": "You are an accurate, practical bookkeeper for a self-employed freelancer. Answer ONLY from the financial snapshot. Cite concrete dollar figures that already appear in the snapshot. Do NOT add, subtract, or estimate any numbers yourself. If the snapshot lacks the answer, say so plainly. Be concise; use a short bulleted list, one item per line."},
+                        {"role": "user", "content": f"FINANCIAL SNAPSHOT:\n{snap}\n\nQUESTION: {question}"},
+                    ], max_tokens=320, temperature=0.2)
+            answer = resp["choices"][0]["message"]["content"].strip()
             return self._send(200, json.dumps({"snapshot": snap, "answer": answer}).encode())
-        except Exception as e:
-            return self._send(500, json.dumps({"error": str(e)}).encode())
+        except SystemExit:
+            return self._send(503, json.dumps({"error": "Model not available - download a GGUF (see README) or use the CLI with --mode dry."}).encode())
+        except Exception:
+            return self._send(500, json.dumps({"error": "Internal error (check server log)."}).encode())
 
     def log_message(self, *a):
         pass

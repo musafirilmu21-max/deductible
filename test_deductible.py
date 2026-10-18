@@ -94,13 +94,13 @@ def test_hybrid_fallback_uses_llm_on_unknown():
     # Monkey-patch the inner LLM so no model file is needed.
     import types
     fake = types.SimpleNamespace()
-    fake.classify = lambda desc, amount: "Meals"
+    fake.classify = lambda desc, amount: ("Meals", "model")
     h = Hybrid.__new__(Hybrid)
     h.llm = fake
     # known merchant -> rules win, LLM never called
-    assert h.classify("STARBUCKS COFFEE", "5") == "Meals"
+    assert h.classify("STARBUCKS COFFEE", "5") == ("Meals", "rule")
     # unknown merchant -> LLM called
-    assert h.classify("MYSTERY VENDOR", "5") == "Meals"
+    assert h.classify("MYSTERY VENDOR", "5") == ("Meals", "model")
 
 
 if __name__ == "__main__":

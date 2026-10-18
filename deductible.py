@@ -158,7 +158,7 @@ class LLM:
             temperature=0.0,
         )
         raw = resp["choices"][0]["message"]["content"]
-        return parse_label(raw, desc)
+        return parse_label(raw, desc), "model"
 
 
 class Hybrid:
@@ -169,10 +169,10 @@ class Hybrid:
     def __init__(self, model_path: str, n_ctx: int = 512, n_threads: int | None = None):
         self.llm = LLM(model_path, n_ctx=n_ctx, n_threads=n_threads)
 
-    def classify(self, desc: str, amount: str) -> str:
+    def classify(self, desc: str, amount: str):
         matched = keyword_match(desc)
         if matched:
-            return matched
+            return matched, "rule"
         return self.llm.classify(desc, amount)
 
 
@@ -195,10 +195,12 @@ def process(csv_path: str, classify_fn, out_path: str) -> dict:
             except ValueError:
                 amt = 0.0
                 amount = "PARSE_ERROR"  # mark bad input for the review column
-            category = classify_fn(desc, amount) if desc else "Other/Personal"
+            result = classify_fn(desc, amount) if desc else ("Other/Personal", "net")
+            category, source = result if isinstance(result, tuple) else (result, "rule")
             rate = DEDUCTIBLE_RATE.get(category, 0.0)
             deductible = round(abs(amt) * rate, 2)
-            flagged = category == "Other/Personal" or abs(amt) > 1000                 or not desc or amount == "PARSE_ERROR"
+            flagged = source == "model" or category == "Other/Personal" or abs(amt) > 1000 \
+                or not desc or amount == "PARSE_ERROR"
             if flagged:
                 needs_review += 1
             totals[category] += abs(amt)
@@ -208,6 +210,7 @@ def process(csv_path: str, classify_fn, out_path: str) -> dict:
                 "description": desc,
                 "amount": amt,
                 "category": category,
+                "source": source,
                 "deductible_pct": int(rate * 100),
                 "deductible_amount": deductible,
                 "review": "CHECK" if flagged else "",
@@ -215,7 +218,7 @@ def process(csv_path: str, classify_fn, out_path: str) -> dict:
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=[
-            "date", "description", "amount", "category",
+            "date", "description", "amount", "category", "source",
             "deductible_pct", "deductible_amount", "review",
         ])
         writer.writeheader()
@@ -255,7 +258,7 @@ def main(argv=None):
         args.mode = "dry"
 
     if args.mode == "dry":
-        classify_fn = lambda desc, amount: keyword_classify(desc)  # noqa: E731
+        classify_fn = lambda desc, amount: (keyword_classify(desc), "rule")  # noqa: E731
     elif args.mode == "model":
         classify_fn = LLM(args.model).classify
     else:
