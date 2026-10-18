@@ -48,7 +48,9 @@ def main():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            # DEV renders inline images at 800px wide, so capture near that width or the
+            # text scales to ~7px and the evidence is unreadable on the published page.
+            page = browser.new_page(viewport={"width": 880, "height": 1000}, device_scale_factor=2)
             page.goto(URL)
 
             # 1. Page renders with title + ask button disabled

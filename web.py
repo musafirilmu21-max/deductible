@@ -313,9 +313,12 @@ class Handler(BaseHTTPRequestHandler):
                         f.write(text)
                         tmp = f.name
                     outp = tmp + ".out"
+                    # resolve the model BEFORE locking: get_hybrid() takes _MODEL_LOCK itself
+                    # and threading.Lock is not re-entrant, so nesting it deadlocks.
+                    hybrid = get_hybrid()
                     # the classify callback runs create_chat_completion, so it needs the lock too
                     with _MODEL_LOCK:
-                        D.process(tmp, get_hybrid().classify, outp)
+                        D.process(tmp, hybrid.classify, outp)
                     rows = categorize_csv(pathlib.Path(outp).read_text(encoding="utf-8"))
                 finally:
                     if tmp:
