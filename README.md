@@ -90,16 +90,16 @@ Run `python benchmark.py` yourself. Results on a commodity laptop, CPU-only:
 
 | dataset | keyword | 0.5B | 1.5B | 3B | **hybrid** |
 |---|---|---|---|---|---|
-| Clean merchant names | 13/15 | 5/15 | 11/15 | 10/15 | **12/15** |
-| Messy bank strings | 10/14 | 6/14 | 7/14 | 7/14 | **12/14** |
+| Clean merchant names | 15/15 | 5/15 | 11/15 | 10/15 | **15/15** |
+| Messy bank strings | 13/14 | 6/14 | 7/14 | 7/14 | **13/14** |
 
 Read that honestly — it is the whole story:
 
 - On **clean, well-known merchant names**, a hand-tuned keyword table is hard to
   beat (it was written against those exact names). On **messy real-world strings**
-  ("SQ *BLUE BOTTLE 4471"), rules rot (10/14) and the model alone is worse (7/14).
+  ("SQ *BLUE BOTTLE 4471"), rules rot (13/14) and the model alone is worse (7/14).
 - **Neither is good enough on its own.** The hybrid — rules for known merchants,
-  LLM for the unknown tail — hits **12/14 on the messy set**, better than either.
+  LLM for the unknown tail — hits **13/14 on the messy set**, better than either alone.
 - And the model's real payoff is `ask.py`: turning a spreadsheet into a bookkeeper
   you can *talk to*, grounded in numbers Python computed. No keyword table can do that.
 

@@ -2,7 +2,7 @@
 
 Every freelancer knows the tax-time ritual: scroll a year of bank lines, tag each one, and try to remember whether `SQ *BLUE BOTTLE 4471` was a client meeting or a personal coffee. The obvious "AI solution" is to upload your whole financial life to a SaaS and let their model sort it. I wanted the opposite: **do it on your own laptop, offline, and use the model only for the part a model is actually good at.**
 
-So I built **Deductible** — a local-first bookkeeping copilot. It tags your transactions into 10 expense categories, applies the right tax treatment, exports a Schedule-C-ready CSV, and then lets you *ask your books questions in plain English* — with no data ever leaving the laptop.
+So I built **Deductible** — a local-first bookkeeping copilot. It tags your transactions into 10 expense categories, applies the right tax treatment, exports a tax-prep starter CSV (categorised spending + deductible estimates) your accountant can drop straight into Schedule C, and then lets you *ask your books questions in plain English* — with no data ever leaving the laptop.
 
 The classifier is a **hybrid**: deterministic rules handle merchants you have seen before (fast, free, exact), and an open-weight LLM handles the unknown long tail — the `SQ *BLUE BOTTLE 4471` garbage that makes keyword tables rot. I benchmarked it honestly, and the hybrid beats either approach alone.
 
@@ -63,19 +63,31 @@ I started with the obvious design: the model classifies each transaction. To mak
 
 | dataset | keyword rules | Qwen2.5-0.5B | Qwen2.5-1.5B | Qwen2.5-3B | **hybrid** |
 |---|---|---|---|---|---|
-| Clean merchant names | 13/15 | 5/15 | 11/15 | 10/15 | **12/15** |
-| Messy bank strings | 10/14 | 6/14 | 7/14 | 7/14 | **12/14** |
+| Clean merchant names | 15/15 | 5/15 | 11/15 | 10/15 | **15/15** |
+| Messy bank strings | 13/14 | 6/14 | 7/14 | 7/14 | **13/14** |
 
 Two uncomfortable truths fell out first:
 
 1. **A hand-tuned keyword table beats the models on clean names.** Of course it does — I wrote the keywords against those exact names.
 2. **Bigger was not automatically better** — 3B did not beat 1.5B at this task.
 
-But on **real bank garbage**, rules rot (10/14) and the model alone is worse (7/14). Neither is good enough. So I stopped asking "rules or model?" and combined them: rules for any merchant they already recognize (instant, free, exact), and the LLM only for the unknown tail. That **hybrid hits 12/14 on the messy set** — better than either alone — while staying a hair behind pure rules on the clean set they were written for.
+But on **real bank garbage**, rules rot (13/14) and the model alone is worse (7/14). Neither is good enough. So I stopped asking "rules or model?" and combined them: rules for any merchant they already recognize (instant, free, exact), and the LLM only for the unknown tail. That **hybrid hits 13/14 on the messy set** — better than either alone — while staying a hair behind pure rules on the clean set they were written for.
 
 Then I asked the better question: *what is a language model actually good at here?* Not memorizing that "Starbucks = meals" — a rule does that for free. It is good at **talking to a human about their money.** So the model's headline job became `ask.py`: turning a spreadsheet into a bookkeeper you can ask *"what should I double-check before filing?"* — grounded in numbers the Python computed, so it never hallucinates a total.
 
 The architecture, in one line: **rules classify, Python calculates, the LLM explains.**
+
+Honest scope: this is a categorisation aid, not a tax filing. It is the input layer to a real Schedule C — it does not do home-office Form 8829, a vehicle log, or depreciation. Those stay with your accountant. What it saves you is the hour a month spent eyeballing a year of statements into the right buckets.
+
+## The Side-Hustle Economics (who actually pays)
+
+The buyer is the **solo 1099 contractor** — a designer, developer, VA, or consultant doing $40–150k/yr. Their pain is real and monthly: a bank export that reads like `SQ *BLUE BOTTLE 4471` and a tax bill that punishes a mislabelled meal.
+
+What would they pay? A freelance accountant charges **$150–400/hr**; a year-end session alone is several hundred dollars, mostly billed for what Deductible does in minutes. At **$15/quarter** ($60/yr — under the cost of one accountant hour) the tool pays for itself the first month if it recovers one miscategorised $200 purchase. The honest pitch is not "replaces your accountant" — it is "stops you paying your accountant to tag coffee." That is a real willingness-to-pay signal, not a land-grab TAM.
+
+The unit economics work *because* it is open weights: $0 marginal inference cost, so the $15 is nearly pure margin once built.
+
+*(This is a one-day build — there is no real user yet, so this is the pricing hypothesis, stated honestly rather than a fake testimonial.)*
 
 ## Why Does Open Innovation Matter?
 

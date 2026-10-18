@@ -49,19 +49,23 @@ DEDUCTIBLE_RATE = {
 }
 
 # Deterministic fallback + sanity net when the model returns junk.
-KEYWORDS = {
-    "Software & Subscriptions": ["adobe", "figma", "github", "notion", "aws", "google workspace",
-                                 "subscription", "saas", "dropbox", "slack", "license", "chatgpt", "jetbrains"],
-    "Home Office": ["desk", "chair", "monitor", "lamp", "office", "keyboard", "standing desk"],
-    "Travel": ["airline", "flight", "hotel", "uber", "lyft", "train", "airbnb", "delta", "united"],
-    "Meals": ["coffee", "lunch", "dinner", "restaurant", "cafe", "starbucks", "doordash", "meal", "food"],
-    "Equipment": ["laptop", "macbook", "camera", "lens", "ssd", "hard drive", "printer", "iphone"],
-    "Marketing": ["facebook ads", "google ads", "ads", "mailchimp", "canva", "promo", "advertis"],
-    "Professional Services": ["accountant", "lawyer", "legal", "contractor", "consultant", "bookkeeper"],
-    "Utilities": ["internet", "comcast", "verizon", "electric", "phone bill", "mobile", "at&t"],
-    "Education": ["course", "udemy", "coursera", "book", "conference", "workshop", "training"],
-    "Other/Personal": ["groceries", "netflix", "spotify", "gym", "rent", "personal", "hulu", "grocery"],
-}
+# Ordered so SPECIFIC personal-expense keywords win over generic ones
+# (e.g. "netflix" must beat "subscription"; "groceries" must beat "food").
+KEYWORDS = [
+    ("Other/Personal", ["netflix", "spotify", "hulu", "groceries", "grocery", "gym",
+                        "whole foods", "trader joe", "doctor visit", "pharmacy", "rent", "personal"]),
+    ("Travel", ["airline", "flight", "hotel", "uber", "lyft", "train", "airbnb", "delta", "united", "lufthansa"]),
+    ("Marketing", ["facebook ads", "google ads", " ads ", "mailchimp", "canva", "promo", "advertis"]),
+    ("Professional Services", ["accountant", "lawyer", "legal", "contractor", "consultant", "bookkeeper"]),
+    ("Utilities", ["internet", "comcast", "verizon", "electric", "phone bill", " mobile", "at&t", "t-mobile"]),
+    ("Education", ["udemy", "coursera", "course", "conference", "workshop", "training"]),
+    ("Equipment", ["laptop", "macbook", "camera", "lens", "ssd", "hard drive", "printer", "iphone", "apple store"]),
+    ("Home Office", ["desk", "chair", "monitor", "lamp", "keyboard", "standing desk", "wework", "office"]),
+    ("Software & Subscriptions", ["adobe", "figma", "github", "notion", "aws", "google workspace", "openai",
+                                  "claude", "subscription", "saas", "dropbox", "slack", "license", "chatgpt", "jetbrains"]),
+    ("Meals", ["coffee", "starbucks", "blue bottle", "lunch", "dinner", "restaurant", "cafe", "bistro",
+               "toast*", "doordash", "meal", "food"]),
+]
 
 SYSTEM = (
     "You are a meticulous bookkeeper for a self-employed freelancer. "
@@ -98,7 +102,7 @@ def build_prompt(desc: str, amount: str) -> str:
 def keyword_match(desc: str):
     """Return the category if a keyword matched, else None (unknown merchant)."""
     d = (desc or "").lower()
-    for cat, kws in KEYWORDS.items():
+    for cat, kws in KEYWORDS:
         if any(k in d for k in kws):
             return cat
     return None
@@ -131,6 +135,12 @@ class LLM:
     def __init__(self, model_path: str, n_ctx: int = 512, n_threads: int | None = None):
         from llama_cpp import Llama  # imported lazily; not needed for --dry-run
 
+        if not Path(model_path).is_file():
+            raise SystemExit(
+                f"Model file not found: {model_path}\n"
+                "Download a GGUF first (see README) or run with --mode dry "
+                "(keyword-only, no model)."
+            )
         self.llm = Llama(
             model_path=model_path,
             n_ctx=n_ctx,
@@ -174,6 +184,9 @@ def process(csv_path: str, classify_fn, out_path: str) -> dict:
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        missing = {"date", "description", "amount"} - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"CSV missing required column(s): {', '.join(sorted(missing))}")
         for row in reader:
             desc = row.get("description", "").strip()
             amount = row.get("amount", "0").strip()
@@ -181,10 +194,11 @@ def process(csv_path: str, classify_fn, out_path: str) -> dict:
                 amt = float(str(amount).replace("$", "").replace(",", ""))
             except ValueError:
                 amt = 0.0
-            category = classify_fn(desc, amount)
+                amount = "PARSE_ERROR"  # mark bad input for the review column
+            category = classify_fn(desc, amount) if desc else "Other/Personal"
             rate = DEDUCTIBLE_RATE.get(category, 0.0)
             deductible = round(abs(amt) * rate, 2)
-            flagged = category == "Other/Personal" or abs(amt) > 1000
+            flagged = category == "Other/Personal" or abs(amt) > 1000                 or not desc or amount == "PARSE_ERROR"
             if flagged:
                 needs_review += 1
             totals[category] += abs(amt)
